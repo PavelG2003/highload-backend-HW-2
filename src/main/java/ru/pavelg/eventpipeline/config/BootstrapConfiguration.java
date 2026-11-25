@@ -15,8 +15,10 @@ public class BootstrapConfiguration {
 
     @Bean
     ApplicationRunner logSelectedRole(ApplicationProperties properties) {
-        return arguments -> log.info(
-                "Application skeleton initialized: role={}. Event processing is not implemented yet.",
-                properties.role());
+        return arguments -> {
+            if (properties.role() != ApplicationProperties.Role.PRODUCER) {
+                log.info("Application skeleton initialized: role={}. Implementation pending.", properties.role());
+            }
+        };
     }
 }

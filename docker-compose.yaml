@@ -26,6 +26,22 @@ x-kafka-service: &kafka-service
     start_period: 45s
   stop_grace_period: 30s
 
+x-producer-environment: &producer-environment
+  APP_ROLE: producer
+  SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka-1:9092,kafka-2:9092,kafka-3:9092
+  EVENTS_PER_SECOND: ${EVENTS_PER_SECOND:-20}
+  USERS_PER_PRODUCER: ${USERS_PER_PRODUCER:-12}
+  KEY_MODE: ${KEY_MODE:-user_id}
+
+x-producer-service: &producer-service
+  build:
+    context: .
+  image: hw2-event-pipeline:local
+  stop_grace_period: 60s
+  depends_on:
+    kafka-init:
+      condition: service_completed_successfully
+
 services:
   kafka-1:
     <<: *kafka-service
@@ -97,20 +113,23 @@ services:
       retries: 12
       start_period: 10s
 
-  # On stage 2 the application is a short-lived skeleton, invoked explicitly.
-  app:
-    profiles: ["tools"]
-    build:
-      context: .
-    image: hw2-event-pipeline:local
+  producer-1:
+    <<: *producer-service
     environment:
-      APP_ROLE: ${APP_ROLE:-producer}
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka-1:9092,kafka-2:9092,kafka-3:9092
-    depends_on:
-      kafka-init:
-        condition: service_completed_successfully
-      postgres:
-        condition: service_healthy
+      <<: *producer-environment
+      PRODUCER_ID: producer-1
+
+  producer-2:
+    <<: *producer-service
+    environment:
+      <<: *producer-environment
+      PRODUCER_ID: producer-2
+
+  producer-3:
+    <<: *producer-service
+    environment:
+      <<: *producer-environment
+      PRODUCER_ID: producer-3
 
 volumes:
   kafka-1-data:

@@ -3,6 +3,25 @@ spring:
     name: event-pipeline
   main:
     web-application-type: none
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:29092,localhost:39092,localhost:49092}
+    producer:
+      client-id: ${PRODUCER_ID:producer-local}
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JacksonJsonSerializer
+      properties:
+        enable.idempotence: true
+        spring.json.add.type.headers: false
+        linger.ms: 0
+        request.timeout.ms: 10000
+        delivery.timeout.ms: 30000
+        max.block.ms: 10000
 
 app:
   role: ${APP_ROLE:producer}
+  producer:
+    id: ${PRODUCER_ID:producer-local}
+    events-per-second: ${EVENTS_PER_SECOND:20}
+    users-per-producer: ${USERS_PER_PRODUCER:12}
+    key-mode: ${KEY_MODE:user_id}
