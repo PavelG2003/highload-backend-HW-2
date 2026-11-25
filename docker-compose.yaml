@@ -1,0 +1,119 @@
+name: hw2-kafka
+
+# YAML anchors share the same settings between the three Kafka nodes.
+x-kafka-environment: &kafka-environment
+  CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+  KAFKA_PROCESS_ROLES: broker,controller
+  KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093
+  KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+  KAFKA_LISTENERS: INTERNAL://:9092,EXTERNAL://:9094,CONTROLLER://:9093
+  KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+  KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+  KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+  KAFKA_LOG_DIRS: /var/lib/kafka/data
+  KAFKA_HEAP_OPTS: -Xms256m -Xmx512m
+
+x-kafka-service: &kafka-service
+  image: apache/kafka:4.1.2
+  healthcheck:
+    test:
+      - CMD-SHELL
+      - KAFKA_HEAP_OPTS='-Xms32m -Xmx128m' /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1
+    interval: 15s
+    timeout: 10s
+    retries: 12
+    start_period: 45s
+  stop_grace_period: 30s
+
+services:
+  kafka-1:
+    <<: *kafka-service
+    hostname: kafka-1
+    environment:
+      <<: *kafka-environment
+      KAFKA_NODE_ID: 1
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-1:9092,EXTERNAL://localhost:29092
+    ports:
+      - "127.0.0.1:29092:9094"
+    volumes:
+      - kafka-1-data:/var/lib/kafka/data
+
+  kafka-2:
+    <<: *kafka-service
+    hostname: kafka-2
+    environment:
+      <<: *kafka-environment
+      KAFKA_NODE_ID: 2
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-2:9092,EXTERNAL://localhost:39092
+    ports:
+      - "127.0.0.1:39092:9094"
+    volumes:
+      - kafka-2-data:/var/lib/kafka/data
+
+  kafka-3:
+    <<: *kafka-service
+    hostname: kafka-3
+    environment:
+      <<: *kafka-environment
+      KAFKA_NODE_ID: 3
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-3:9092,EXTERNAL://localhost:49092
+    ports:
+      - "127.0.0.1:49092:9094"
+    volumes:
+      - kafka-3-data:/var/lib/kafka/data
+
+  kafka-init:
+    image: apache/kafka:4.1.2
+    depends_on:
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka-1:9092,kafka-2:9092,kafka-3:9092
+      KAFKA_HEAP_OPTS: -Xms64m -Xmx128m
+    volumes:
+      - ./docker/kafka/init-topics.sh:/scripts/init-topics.sh:ro
+    entrypoint: ["/bin/bash", "/scripts/init-topics.sh"]
+    restart: "no"
+
+  postgres:
+    image: postgres:18.1-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-events}
+      POSTGRES_USER: ${POSTGRES_USER:-events}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-events-local}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  # On stage 2 the application is a short-lived skeleton, invoked explicitly.
+  app:
+    profiles: ["tools"]
+    build:
+      context: .
+    image: hw2-event-pipeline:local
+    environment:
+      APP_ROLE: ${APP_ROLE:-producer}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka-1:9092,kafka-2:9092,kafka-3:9092
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+
+volumes:
+  kafka-1-data:
+  kafka-2-data:
+  kafka-3-data:
+  postgres-data:
