@@ -1,0 +1,8 @@
+spring:
+  application:
+    name: event-pipeline
+  main:
+    web-application-type: none
+
+app:
+  role: ${APP_ROLE:producer}
