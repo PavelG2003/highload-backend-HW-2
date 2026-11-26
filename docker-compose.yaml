@@ -42,6 +42,27 @@ x-producer-service: &producer-service
     kafka-init:
       condition: service_completed_successfully
 
+x-sink-environment: &sink-environment
+  SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka-1:9092,kafka-2:9092,kafka-3:9092
+  SINK_JDBC_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-events}
+  POSTGRES_USER: ${POSTGRES_USER:-events}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-events-local}
+
+x-consumer-environment: &consumer-environment
+  <<: *sink-environment
+  APP_ROLE: consumer
+  PROCESSING_DELAY_MS: ${PROCESSING_DELAY_MS:-20}
+
+x-consumer-service: &consumer-service
+  build:
+    context: .
+  image: hw2-event-pipeline:local
+  depends_on:
+    kafka-init:
+      condition: service_completed_successfully
+    postgres:
+      condition: service_healthy
+
 services:
   kafka-1:
     <<: *kafka-service
@@ -130,6 +151,35 @@ services:
     environment:
       <<: *producer-environment
       PRODUCER_ID: producer-3
+
+  consumer-1:
+    <<: *consumer-service
+    environment:
+      <<: *consumer-environment
+      CONSUMER_ID: consumer-1
+
+  consumer-2:
+    <<: *consumer-service
+    environment:
+      <<: *consumer-environment
+      CONSUMER_ID: consumer-2
+
+  consumer-3:
+    <<: *consumer-service
+    environment:
+      <<: *consumer-environment
+      CONSUMER_ID: consumer-3
+
+  verify:
+    profiles: ["tools"]
+    image: hw2-event-pipeline:local
+    environment:
+      <<: *sink-environment
+      APP_ROLE: verify
+      GITHUB_LOGIN: ${GITHUB_LOGIN:-PavelG2003}
+      TZ: Europe/Moscow
+      SPRING_MAIN_BANNER_MODE: "off"
+      LOGGING_LEVEL_ROOT: "OFF"
 
 volumes:
   kafka-1-data:
